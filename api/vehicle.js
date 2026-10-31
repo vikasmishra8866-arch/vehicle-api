@@ -1,7 +1,5 @@
 // api/vehicle.js
 
-import { Ratelimit } from "@upstash/ratelimit";
-import { Redis } from "@upstash/redis";
 import {
   isVehicleValid,
   buildNotFoundResponse,
@@ -11,22 +9,10 @@ import {
 
 export const maxDuration = 60;
 
-const redis = Redis.fromEnv();
-
-const ratelimit = new Ratelimit({
-  redis,
-  limiter: Ratelimit.slidingWindow(10, "100 s"),
-  analytics: true,
-  prefix: "ratelimit:vehicle_v2",
-});
-
 const UPSTREAM = "https://hideme.eu.org/lookup";
 const SOURCE_KEY = process.env.SOURCE_API_KEY;
 const OUR_KEY = process.env.OUR_API_KEY;
-const CACHE_TTL_SUCCESS = 60 * 60 * 24;
-const CACHE_TTL_NOT_FOUND = 60 * 60;
 const UPSTREAM_TIMEOUT_MS = 25_000;
-const MOBILE_MASK_MODE = process.env.MASK_MOBILE || "none";
 
 function normalizeRegNo(raw) {
   return String(raw || "").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
@@ -71,27 +57,8 @@ export default async function handler(req, res) {
       errorResponse("INVALID_REGISTRATION_NUMBER", "Format: GJ05MS9717", Date.now() - start)
     );
 
-  const ip = (req.headers["x-forwarded-for"] || "").split(",")[0].trim() || "office";
-  const rl = await ratelimit.limit(ip);
-  res.setHeader("X-RateLimit-Limit", String(rl.limit));
-  res.setHeader("X-RateLimit-Remaining", String(rl.remaining));
-  res.setHeader("X-RateLimit-Reset", String(rl.reset));
-  if (!rl.success)
-    return res.status(429).json(
-      errorResponse("RATE_LIMITED", "10 requests per 100 seconds", Date.now() - start)
-    );
-
-  const cacheKey = `vehicle_v2:${regNo}`;
-
   try {
-    let upstream = await redis.get(cacheKey);
-
-    if (!upstream) {
-      upstream = await fetchUpstream(regNo);
-      const ttl = isVehicleValid(upstream) ? CACHE_TTL_SUCCESS : CACHE_TTL_NOT_FOUND;
-      if (upstream) await redis.setex(cacheKey, ttl, upstream);
-    }
-
+    const upstream = await fetchUpstream(regNo);
     const elapsed = Date.now() - start;
 
     if (!isVehicleValid(upstream)) {
@@ -100,7 +67,7 @@ export default async function handler(req, res) {
       return res.status(200).json(payload);
     }
 
-    const payload = buildSuccessResponse(upstream, elapsed, MOBILE_MASK_MODE);
+    const payload = buildSuccessResponse(upstream, elapsed);
     if (req.query.debug === "1") payload._raw_upstream = upstream;
     return res.status(200).json(payload);
 
