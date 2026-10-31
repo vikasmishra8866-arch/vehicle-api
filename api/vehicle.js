@@ -11,7 +11,6 @@ export const maxDuration = 60;
 
 const UPSTREAM = "https://hideme.eu.org/lookup";
 const SOURCE_KEY = process.env.SOURCE_API_KEY;
-const OUR_KEY = process.env.OUR_API_KEY;
 const UPSTREAM_TIMEOUT_MS = 25_000;
 
 function normalizeRegNo(raw) {
@@ -42,14 +41,11 @@ export default async function handler(req, res) {
 
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type,x-api-key");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
   if (req.method === "OPTIONS") return res.status(204).end();
   if (req.method !== "GET")
     return res.status(405).json(errorResponse("METHOD_NOT_ALLOWED", "Only GET", Date.now() - start));
-
-  if (OUR_KEY && req.headers["x-api-key"] !== OUR_KEY)
-    return res.status(401).json(errorResponse("UNAUTHORIZED", "Invalid x-api-key", Date.now() - start));
 
   const regNo = normalizeRegNo(req.query.number);
   if (!isValidRegNo(regNo))
