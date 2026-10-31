@@ -23,8 +23,8 @@ const ratelimit = new Ratelimit({
 const UPSTREAM = "https://hideme.eu.org/lookup";
 const SOURCE_KEY = process.env.SOURCE_API_KEY;
 const OUR_KEY = process.env.OUR_API_KEY;
-const CACHE_TTL_SUCCESS = 60 * 60 * 24;   // 24h — valid vehicle
-const CACHE_TTL_NOT_FOUND = 60 * 60;      // 1h — not found (recheck sooner)
+const CACHE_TTL_SUCCESS = 60 * 60 * 24;
+const CACHE_TTL_NOT_FOUND = 60 * 60;
 const UPSTREAM_TIMEOUT_MS = 25_000;
 const MOBILE_MASK_MODE = process.env.MASK_MOBILE || "none";
 
@@ -88,21 +88,18 @@ export default async function handler(req, res) {
 
     if (!upstream) {
       upstream = await fetchUpstream(regNo);
-      const valid = isVehicleValid(upstream);
-      const ttl = valid ? CACHE_TTL_SUCCESS : CACHE_TTL_NOT_FOUND;
+      const ttl = isVehicleValid(upstream) ? CACHE_TTL_SUCCESS : CACHE_TTL_NOT_FOUND;
       if (upstream) await redis.setex(cacheKey, ttl, upstream);
     }
 
     const elapsed = Date.now() - start;
 
-    // 🔑 RULE: chassis missing / success:false / vehicle missing → single not-found response
     if (!isVehicleValid(upstream)) {
       const payload = buildNotFoundResponse(elapsed);
       if (req.query.debug === "1") payload._raw_upstream = upstream;
       return res.status(200).json(payload);
     }
 
-    // 🔑 Full data — nulls as-is
     const payload = buildSuccessResponse(upstream, elapsed, MOBILE_MASK_MODE);
     if (req.query.debug === "1") payload._raw_upstream = upstream;
     return res.status(200).json(payload);
